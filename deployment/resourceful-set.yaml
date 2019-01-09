@@ -15,5 +15,38 @@ spec:
     kind: ResourcefulSet
     shortNames:
       - rs
+  additionalPrinterColumns:
+    - name: Resource
+      type: string
+      description: Resource that the ResourcefulSet will be replicated for
+      JSONPath: .spec.replicateForResource
+    - name: Desired
+      type: integer
+      description: Desired replica count, based on number of resources available
+      JSONPath: .status.desiredCount
+    - name: Current
+      type: integer
+      description: Active replica count
+      JSONPath: .status.currentCount
+    - name: Up-to-date
+      type: integer
+      description: Active replica count, pointing to up-to-date resource definitions
+      JSONPath: .status.upToDateCount
+    - name: Outdated
+      type: integer
+      description: Active replica count, pointing to outdated resource definitions (and need to be recreated)
+      JSONPath: .status.outdatedCount
+    - name: Age
+      type: date
+      JSONPath: .metadata.creationTimestamp
+  validation:
+    openAPIV3Schema:
+      properties:
+        replicateForResource:
+          type: string
+        replicationResourceVolume:
+          type: string
+
+
 
 # TODO: Add controller
