@@ -13,3 +13,7 @@ spec:
     plural: foods
     singular: food
     kind: Food
+  additionalPrinterColumns:
+    - name: Age
+      type: date
+      JSONPath: .metadata.creationTimestamp
