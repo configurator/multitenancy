@@ -1,0 +1,19 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: resourcefulsets.confi.gurator.com
+spec:
+  group: confi.gurator.com
+  versions:
+    - name: v1
+      served: true
+      storage: true
+  scope: Namespaced
+  names:
+    plural: resourcefulsets
+    singular: resourcefulset
+    kind: ResourcefulSet
+    shortNames:
+      - rs
+
+# TODO: Add controller
