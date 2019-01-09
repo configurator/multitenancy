@@ -1,0 +1,26 @@
+apiVersion: confi.gurator.com/v1
+kind: ResourcefulSet
+metadata:
+  name: food-processor
+spec:
+  # We want one instace for each Food in our system
+  replicateForResource: Food
+  # Name the volume for where to put the food details
+  replicationResourceVolume: which-food
+
+  # Standard selector and template definition, much like for Deployments or StatefulSets:
+  selector:
+    matchLabels:
+      app: food-processor
+  template:
+    metadata:
+      labels:
+        app: food-processor
+    spec:
+      containers:
+      - name: food-processor
+        image: my-food-processor
+        # Add a volume so we can know which Food this pod belongs to
+        volumes:
+          - name: which-food
+            mountPath: /etc/which-food

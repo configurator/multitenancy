@@ -1,0 +1,27 @@
+apiVersion: examples.confi.gurator.com/v1
+kind: Food
+metadata:
+  name: apple
+data:
+  name: Apple
+  type: Fruit
+
+---
+
+apiVersion: examples.confi.gurator.com/v1
+kind: Food
+metadata:
+  name: cucumber
+data:
+  name: Cucumber
+  type: Vegetable
+
+---
+
+apiVersion: examples.confi.gurator.com/v1
+kind: Food
+metadata:
+  name: tomato
+data:
+  name: Tomato
+  type: Fruit
