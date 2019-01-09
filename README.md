@@ -1,6 +1,12 @@
 # ResourcefulSets
 `ResourcefulSet` is a kubernetes workload type like `StatefulSet`, except dependant on resources instead of a replica count.
 
+## Installation
+
+```
+kubectl apply -f https://raw.githubusercontent.com/configurator/resourceful-set/master/deployment/resourceful-set.yaml
+```
+
 ## Example
 
 Suppose you have a custom resource type for your application:
@@ -84,4 +90,3 @@ spec:
 The `ResourcefulSet` operator will now create a Pod for each `Food` in the system, and mount a volume on each one at `/etc/which-food`. Inside that directory, we'll have two files, named `name` and `type`, containing the data from the `Food` definition, much like it would if we had a `ConfigMap`.
 
 If a `Food` item is created or deleted, the pods are killed and started appropriately; for updates, the pod is first killed, then a new one is started.
-,
