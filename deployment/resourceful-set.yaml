@@ -14,7 +14,7 @@ spec:
     singular: resourcefulset
     kind: ResourcefulSet
     shortNames:
-      - rs
+      - rfs
   subresources:
     status: {}
   additionalPrinterColumns:
