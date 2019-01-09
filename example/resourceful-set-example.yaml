@@ -8,6 +8,9 @@ spec:
   # Name the volume for where to put the food details
   replicationResourceVolume: which-food
 
+  # The paused field can be set to true to pause handling of this ResourcefulSet
+  # paused: false
+
   # Standard selector and template definition, much like for Deployments or StatefulSets:
   selector:
     matchLabels:
