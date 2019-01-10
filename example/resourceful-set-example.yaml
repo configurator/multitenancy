@@ -22,8 +22,12 @@ spec:
     spec:
       containers:
       - name: food-processor
-        image: my-food-processor
+        image: busybox
+        command:
+          - 'sh'
+          - '-c'
+          - 'while true; do date; cat /etc/which-food; sleep 5; done'
         # Add a volume so we can know which Food this pod belongs to
-        volumes:
-          - name: which-food
-            mountPath: /etc/which-food
+        # volumes:
+        #   - name: which-food
+        #     mountPath: /etc/which-food
