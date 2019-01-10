@@ -2,7 +2,7 @@ package resourcefulset
 
 import (
 	"context"
-	"reflect"
+	"encoding/json"
 
 	confiv1 "github.com/configurator/resourceful-set/pkg/apis/confi/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -18,6 +18,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
+
+const annotationKey = "confi.gurator.com/resourceful-set-creation-spec"
 
 var log = logf.Log.WithName("controller_resourcefulset")
 
@@ -124,23 +126,19 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 	}
 
 	// Pod already exists - check if its spec is identical to what we would create
-	if reflect.DeepEqual(pod.Spec, found.Spec) {
+	oldAnnotation := pod.Annotations[annotationKey]
+	newAnnotation := found.Annotations[annotationKey]
+	if oldAnnotation == newAnnotation {
 		reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 		return reconcile.Result{}, nil
-	} else {
-		// Pod spec is different - recreate it
-		err = r.client.Delete(context.TODO(), found)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		return reconcile.Result{}, nil
 	}
+
+	// Pod spec is different - recreate it
+	// This will trigger recreation because we watch for pod deletions
+	reqLogger.Info("Reconciler found pod already exists - recreating pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+	err = r.client.Delete(context.TODO(), found)
+	// The pod will be recreated because we're watching deletions
+	return reconcile.Result{}, nil
 }
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
@@ -169,8 +167,19 @@ func newPodForCR(cr *confiv1.ResourcefulSet, itemName string) *corev1.Pod {
 		// })
 	}
 
-	return &corev1.Pod{
+	result := &corev1.Pod{
 		ObjectMeta: *metadata,
 		Spec:       *spec,
 	}
+
+	bytes, _ := json.Marshal(result)
+	// Assumes no err. Bah.
+	stringRepresentation := string(bytes)
+
+	if result.Annotations == nil {
+		result.Annotations = make(map[string]string)
+	}
+	result.Annotations[annotationKey] = stringRepresentation
+
+	return result
 }
