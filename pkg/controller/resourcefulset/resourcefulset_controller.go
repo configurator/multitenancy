@@ -101,8 +101,11 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance, "example-item")
+	// Define what we'll be creating
+	pod, err := createPod(instance, "example-item")
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
 	// Set ResourcefulSet instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
@@ -141,8 +144,8 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 	return reconcile.Result{}, nil
 }
 
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *confiv1.ResourcefulSet, itemName string) *corev1.Pod {
+// createPod returns a busybox pod with the same name/namespace as the cr
+func createPod(cr *confiv1.ResourcefulSet, itemName string) (*corev1.Pod, error) {
 	combinedName := cr.Name + "-" + itemName
 
 	metadata := cr.Spec.Template.ObjectMeta.DeepCopy()
@@ -172,8 +175,11 @@ func newPodForCR(cr *confiv1.ResourcefulSet, itemName string) *corev1.Pod {
 		Spec:       *spec,
 	}
 
-	bytes, _ := json.Marshal(result)
-	// Assumes no err. Bah.
+	bytes, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+
 	stringRepresentation := string(bytes)
 
 	if result.Annotations == nil {
@@ -181,5 +187,5 @@ func newPodForCR(cr *confiv1.ResourcefulSet, itemName string) *corev1.Pod {
 	}
 	result.Annotations[annotationKey] = stringRepresentation
 
-	return result
+	return result, nil
 }
