@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 
 	confiv1 "github.com/configurator/resourceful-set/pkg/apis/confi/v1"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,7 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const annotationKey = "confi.gurator.com/resourceful-set-creation-spec"
+const creationSpecAnnotationKey = "confi.gurator.com/resourcefulset-creation-spec"
+const createdByLabel = "confi.gurator.com/resourceful-set-creation-spec"
 
 var log = logf.Log.WithName("controller_resourcefulset")
 
@@ -91,7 +94,7 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 	instance := &confiv1.ResourcefulSet{}
 	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if kerrors.IsNotFound(err) {
 			// Request object not found, could have been deleted after reconcile request.
 			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
 			// Return and don't requeue
@@ -102,53 +105,122 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 	}
 
 	// Define what we'll be creating
-	pod, err := createPod(instance, "example-item")
+	r.createItems(reqLogger,
+		instance,
+		[]string{
+			"example-item",
+			"another-one",
+		},
+		map[string]map[string]string{
+			"example-item": map[string]string{
+				"hello": "world",
+			},
+			"another-one": map[string]string{
+				"a-file": "contents",
+			},
+		})
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	// Set ResourcefulSet instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
+	// Add an annotation to each item, to compare versions to see if items need to be recreated
 
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
+	// log.Info(`Desired items`, `items`, items)
 
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
-	} else if err != nil {
-		return reconcile.Result{}, err
-	}
+	// list := metav1.List{}
+	// err = r.client.List(context.TODO(),
+	// 	&client.ListOptions{
+	// 		Namespace:     instance.Namespace,
+	// 		LabelSelector: labels.Everything(),
+	// 	},
+	// 	&list,
+	// )
 
-	// Pod already exists - check if its spec is identical to what we would create
-	oldAnnotation := pod.Annotations[annotationKey]
-	newAnnotation := found.Annotations[annotationKey]
-	if oldAnnotation == newAnnotation {
-		reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-		return reconcile.Result{}, nil
-	}
+	// if err != nil {
+	// 	return reconcile.Result{}, err
+	// }
 
-	// Pod spec is different - recreate it
-	// This will trigger recreation because we watch for pod deletions
-	reqLogger.Info("Reconciler found pod already exists - recreating pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-	err = r.client.Delete(context.TODO(), found)
-	// The pod will be recreated because we're watching deletions
 	return reconcile.Result{}, nil
+
+	// pod, err := createPod(instance, "example-item")
+	// if err != nil {
+	// 	return reconcile.Result{}, err
+	// }
+
+	// // Set ResourcefulSet instance as the owner and controller
+	// if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+	// 	return reconcile.Result{}, err
+	// }
+
+	// // Check if this Pod already exists
+	// found := &corev1.Pod{}
+	// err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
+	// if err != nil && kerrors.IsNotFound(err) {
+	// 	reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+	// 	err = r.client.Create(context.TODO(), pod)
+	// 	if err != nil {
+	// 		return reconcile.Result{}, err
+	// 	}
+
+	// 	// Pod created successfully - don't requeue
+	// 	return reconcile.Result{}, nil
+	// } else if err != nil {
+	// 	return reconcile.Result{}, err
+	// }
+
+	// // Pod already exists - check if its spec is identical to what we would create
+	// oldAnnotation := pod.Annotations[creationSpecAnnotationKey]
+	// newAnnotation := found.Annotations[creationSpecAnnotationKey]
+	// if oldAnnotation == newAnnotation {
+	// 	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	// 	return reconcile.Result{}, nil
+	// }
+
+	// // Pod spec is different - recreate it
+	// // This will trigger recreation because we watch for pod deletions
+	// reqLogger.Info("Reconciler found pod already exists - recreating pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+	// err = r.client.Delete(context.TODO(), found)
+	// // The pod will be recreated because we're watching deletions
+	// return reconcile.Result{}, nil
 }
 
-// createPod returns a busybox pod with the same name/namespace as the cr
-func createPod(cr *confiv1.ResourcefulSet, itemName string) (*corev1.Pod, error) {
-	combinedName := cr.Name + "-" + itemName
+func (r *ReconcileResourcefulSet) createItems(logger logr.Logger, cr *confiv1.ResourcefulSet, resourceNames []string, data map[string]map[string]string) {
+	for _, name := range resourceNames {
+		r.createItemsForResource(logger, cr, name, data[name])
+	}
+}
 
-	metadata := cr.Spec.Template.ObjectMeta.DeepCopy()
+// createItems returns all the items we would create if this were a new deployment
+// these items should later be compared with the actual state to reconcile
+func (r *ReconcileResourcefulSet) createItemsForResource(log logr.Logger, cr *confiv1.ResourcefulSet, resourceName string, data map[string]string) error {
+	combinedName := cr.Name + "-" + resourceName
+
+	// Create ConfigMap for the data volume
+
+	configMapMetadata := metav1.ObjectMeta{
+		Name:      combinedName,
+		Namespace: cr.Namespace,
+	}
+
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: configMapMetadata,
+		Data:       data,
+	}
+
+	addCreatedByLabel(&configMap.ObjectMeta, combinedName)
+	err := addCreationAnnotation(&configMap.ObjectMeta, configMap)
+	if err != nil {
+		return err
+	}
+
+	recreatedConfig, err := r.reconcileConfigMap(log, cr, configMap)
+	if err != nil {
+		return err
+	}
+
+	// Create a Pod for the workload
+
+	metadata := *cr.Spec.Template.ObjectMeta.DeepCopy()
 	metadata.Namespace = cr.Namespace
 	metadata.Name = combinedName
 
@@ -157,35 +229,144 @@ func createPod(cr *confiv1.ResourcefulSet, itemName string) (*corev1.Pod, error)
 	replicationResourceVolume := cr.Spec.ReplicationResourceVolume
 	if replicationResourceVolume != "" {
 		// Add a volume mapping to a ConfigMap
-		// Before this is uncommented, ConfigMaps need to be generated
-		// spec.Volumes = append(spec.Volumes, corev1.Volume{
-		// 	Name: replicationResourceVolume,
-		// 	VolumeSource: corev1.VolumeSource{
-		// 		ConfigMap: &corev1.ConfigMapVolumeSource{
-		// 			corev1.LocalObjectReference{
-		// 				Name: combinedName,
-		// 			},
-		// 		},
-		// 	},
-		// })
+		spec.Volumes = append(spec.Volumes, corev1.Volume{
+			Name: replicationResourceVolume,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: combinedName,
+					},
+				},
+			},
+		})
 	}
 
-	result := &corev1.Pod{
-		ObjectMeta: *metadata,
+	pod := &corev1.Pod{
+		ObjectMeta: metadata,
 		Spec:       *spec,
 	}
-
-	bytes, err := json.Marshal(result)
+	addCreatedByLabel(&pod.ObjectMeta, combinedName)
+	// we add the configmap version before we add the creation annotation, so that if it changes
+	// a recreation is forced
+	err = addCreationAnnotation(&pod.ObjectMeta, pod)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	err = r.reconcilePod(log, cr, pod, recreatedConfig)
+	if err != nil {
+		return err
 	}
 
+	return nil
+}
+
+func (r *ReconcileResourcefulSet) reconcileConfigMap(reqLogger logr.Logger, cr *confiv1.ResourcefulSet, configMap *corev1.ConfigMap) (bool, error) {
+	reqLogger.Info(`Reconciling ConfigMap`, `ConfigMap`, configMap.ObjectMeta)
+
+	// Set ResourcefulSet instance as the owner and controller
+	if err := controllerutil.SetControllerReference(cr, configMap, r.scheme); err != nil {
+		return false, err
+	}
+
+	// Check if this ConfigMap already exists
+	found := &corev1.ConfigMap{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: configMap.Name, Namespace: configMap.Namespace}, found)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			// ConfigMap doesn't exist - create it
+			reqLogger.Info("Creating a new ConfigMap", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
+			err = r.client.Create(context.TODO(), configMap)
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		}
+		// A different error when trying to get the pod
+		return false, err
+	}
+
+	// ConfigMap already exists - check if its spec is identical to what we would create
+	oldAnnotation := configMap.Annotations[creationSpecAnnotationKey]
+	newAnnotation := found.Annotations[creationSpecAnnotationKey]
+	if oldAnnotation == newAnnotation {
+		reqLogger.Info("Skip reconcile: ConfigMap already exists", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
+		return false, nil
+	}
+
+	// ConfigMap spec is different - recreate it
+	// This will trigger recreation because we watch for pod deletions
+	reqLogger.Info("Reconciler found ConfigMap already exists - recreating ConfigMap", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
+	err = r.client.Delete(context.TODO(), found)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (r *ReconcileResourcefulSet) reconcilePod(reqLogger logr.Logger, cr *confiv1.ResourcefulSet, pod *corev1.Pod, recreatedConfig bool) error {
+	reqLogger.Info(`Reconciling pod`, `Pod`, pod.ObjectMeta)
+
+	// Set ResourcefulSet instance as the owner and controller
+	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
+		return err
+	}
+
+	// Check if this Pod already exists
+	found := &corev1.Pod{}
+	err := r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
+	if err != nil {
+		if kerrors.IsNotFound(err) {
+			// Pod doesn't exist - create it
+			reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+			err = r.client.Create(context.TODO(), pod)
+			return err
+		}
+		// A different error when trying to get the pod
+		return err
+	}
+
+	// Pod already exists - check if its spec is identical to what we would create
+	if !recreatedConfig {
+		// If we've recrated the config we can skip the annotation check because we're always going to recreate the pod
+		oldAnnotation := pod.Annotations[creationSpecAnnotationKey]
+		newAnnotation := found.Annotations[creationSpecAnnotationKey]
+		if oldAnnotation == newAnnotation {
+			reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+			return nil
+		}
+	}
+
+	// Pod spec is different - recreate it
+	// This will trigger recreation because we watch for pod deletions
+	reqLogger.Info("Reconciler found pod already exists - recreating pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+	err = r.client.Delete(context.TODO(), found)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func addCreationAnnotation(metadata *metav1.ObjectMeta, item runtime.Object) error {
+	// Get the string representation of the current object
+	bytes, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
 	stringRepresentation := string(bytes)
 
-	if result.Annotations == nil {
-		result.Annotations = make(map[string]string)
+	// Add the string representation annotation to the object's metadata
+	if metadata.Annotations == nil {
+		metadata.Annotations = make(map[string]string)
 	}
-	result.Annotations[annotationKey] = stringRepresentation
+	metadata.Annotations[creationSpecAnnotationKey] = stringRepresentation
 
-	return result, nil
+	return nil
+}
+
+func addCreatedByLabel(metadata *metav1.ObjectMeta, value string) {
+	if metadata.Labels == nil {
+		metadata.Labels = make(map[string]string)
+	}
+	metadata.Labels[createdByLabel] = value
 }

@@ -26,8 +26,16 @@ spec:
         command:
           - 'sh'
           - '-c'
-          - 'while true; do date; cat /etc/which-food; sleep 5; done'
+          - 'while true; do
+              date;
+              for file in /etc/which-food/*; do
+                echo $file;
+                cat $file;
+                echo;
+              done;
+              sleep 5;
+            done'
         # Add a volume so we can know which Food this pod belongs to
-        # volumes:
-        #   - name: which-food
-        #     mountPath: /etc/which-food
+        volumeMounts:
+          - name: which-food
+            mountPath: /etc/which-food
