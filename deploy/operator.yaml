@@ -24,7 +24,7 @@ spec:
       serviceAccountName: resourceful-set
       containers:
         - name: resourceful-set
-          image: configurator/resourceful-set:v0.0.3
+          image: configurator/resourceful-set:v0.0.5
           ports:
           - containerPort: 60000
             name: metrics
