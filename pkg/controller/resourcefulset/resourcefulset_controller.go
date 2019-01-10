@@ -2,6 +2,7 @@ package resourcefulset
 
 import (
 	"context"
+	"reflect"
 
 	confiv1 "github.com/configurator/resourceful-set/pkg/apis/confi/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -122,9 +123,24 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-	return reconcile.Result{}, nil
+	// Pod already exists - check if its spec is identical to what we would create
+	if reflect.DeepEqual(pod.Spec, found.Spec) {
+		reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		return reconcile.Result{}, nil
+	} else {
+		// Pod spec is different - recreate it
+		err = r.client.Delete(context.TODO(), found)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		err = r.client.Create(context.TODO(), pod)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		return reconcile.Result{}, nil
+	}
 }
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
