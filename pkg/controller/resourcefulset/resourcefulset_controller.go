@@ -6,7 +6,6 @@ import (
 	confiv1 "github.com/configurator/resourceful-set/pkg/apis/confi/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -100,7 +99,7 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 	}
 
 	// Define a new Pod object
-	pod := newPodForCR(instance)
+	pod := newPodForCR(instance, "example-item")
 
 	// Set ResourcefulSet instance as the owner and controller
 	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
@@ -129,24 +128,33 @@ func (r *ReconcileResourcefulSet) Reconcile(request reconcile.Request) (reconcil
 }
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *confiv1.ResourcefulSet) *corev1.Pod {
-	labels := map[string]string{
-		"app": cr.Name,
+func newPodForCR(cr *confiv1.ResourcefulSet, itemName string) *corev1.Pod {
+	combinedName := cr.Name + "-" + itemName
+
+	metadata := cr.Spec.Template.ObjectMeta.DeepCopy()
+	metadata.Namespace = cr.Namespace
+	metadata.Name = combinedName
+
+	spec := cr.Spec.Template.Spec.DeepCopy()
+
+	replicationResourceVolume := cr.Spec.ReplicationResourceVolume
+	if replicationResourceVolume != "" {
+		// Add a volume mapping to a ConfigMap
+		// Before this is uncommented, ConfigMaps need to be generated
+		// spec.Volumes = append(spec.Volumes, corev1.Volume{
+		// 	Name: replicationResourceVolume,
+		// 	VolumeSource: corev1.VolumeSource{
+		// 		ConfigMap: &corev1.ConfigMapVolumeSource{
+		// 			corev1.LocalObjectReference{
+		// 				Name: combinedName,
+		// 			},
+		// 		},
+		// 	},
+		// })
 	}
+
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
-			Labels:    labels,
-		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
-				},
-			},
-		},
+		ObjectMeta: *metadata,
+		Spec:       *spec,
 	}
 }
