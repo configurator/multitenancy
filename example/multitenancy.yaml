@@ -1,14 +1,14 @@
 apiVersion: confi.gurator.com/v1
-kind: ResourcefulSet
+kind: MultiTenancy
 metadata:
   name: food-processor
 spec:
   # We want one instace for each Food in our system
-  replicateForResource: Food
+  tenancyKind: Food
   # Name the volume for where to put the food details
-  replicationResourceVolume: which-food
+  tenantResourceVolume: which-food
 
-  # The paused field can be set to true to pause handling of this ResourcefulSet
+  # The paused field can be set to true to pause handling of this MultiTenancy
   # paused: false
 
   # Standard selector and template definition, much like for Deployments or StatefulSets:

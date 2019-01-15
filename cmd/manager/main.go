@@ -7,8 +7,8 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/configurator/resourceful-set/pkg/apis"
-	"github.com/configurator/resourceful-set/pkg/controller"
+	"github.com/configurator/multitenancy/pkg/apis"
+	"github.com/configurator/multitenancy/pkg/controller"
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	"github.com/operator-framework/operator-sdk/pkg/leader"
 	"github.com/operator-framework/operator-sdk/pkg/ready"
@@ -53,7 +53,7 @@ func main() {
 	}
 
 	// Become the leader before proceeding
-	leader.Become(context.TODO(), "resourceful-set-lock")
+	leader.Become(context.TODO(), "multitenancy-lock")
 
 	r := ready.NewFileReady()
 	err = r.Set()

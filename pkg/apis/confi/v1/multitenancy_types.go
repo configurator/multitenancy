@@ -8,17 +8,17 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// ResourcefulSetSpec defines the desired state of ResourcefulSet
-type ResourcefulSetSpec struct {
-	// Which resource type we're replicating over. For each item of this resource type, the resourcefulset
+// MultiTenancySpec defines the desired state of MultiTenancy
+type MultiTenancySpec struct {
+	// Which resource type we're replicating over. For each item of this resource type, the multitenancy
 	// will create a pod.
-	ReplicationForResource string `json:"replicateForResource"`
+	TenancyKind string `json:"tenancyKind"`
 
 	// A volume name to be used so the pod knows which resource instance it's replicated for.
 	// +optional
-	ReplicationResourceVolume string `json:"replicationResourceVolume,omitempty"`
+	TenantResourceVolume string `json:"tenantResourceVolume,omitempty"`
 
-	// Indicates that the ResourcefulSet is paused and will not be processed by the
+	// Indicates that the MultiTenancy is paused and will not be processed by the
 	// resourceful set controller.
 	// +optional
 	Paused bool `json:"paused,omitempty"`
@@ -32,8 +32,8 @@ type ResourcefulSetSpec struct {
 	Template v1.PodTemplateSpec `json:"template"`
 }
 
-// ResourcefulSetStatus defines the observed state of ResourcefulSet
-type ResourcefulSetStatus struct {
+// MultiTenancyStatus defines the observed state of MultiTenancy
+type MultiTenancyStatus struct {
 	// The generation observed by the deployment controller.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
@@ -67,25 +67,25 @@ type ResourcefulSetStatus struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ResourcefulSet is the Schema for the resourcefulsets API
+// MultiTenancy is the Schema for the multitenancys API
 // +k8s:openapi-gen=true
-type ResourcefulSet struct {
+type MultiTenancy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ResourcefulSetSpec   `json:"spec,omitempty"`
-	Status ResourcefulSetStatus `json:"status,omitempty"`
+	Spec   MultiTenancySpec   `json:"spec,omitempty"`
+	Status MultiTenancyStatus `json:"status,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ResourcefulSetList contains a list of ResourcefulSet
-type ResourcefulSetList struct {
+// MultiTenancyList contains a list of MultiTenancy
+type MultiTenancyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ResourcefulSet `json:"items"`
+	Items           []MultiTenancy `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&ResourcefulSet{}, &ResourcefulSetList{})
+	SchemeBuilder.Register(&MultiTenancy{}, &MultiTenancyList{})
 }

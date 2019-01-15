@@ -1,28 +1,28 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  namespace: resourceful-set
-  name: resourceful-set
+  namespace: multitenancy
+  name: multitenancy
 spec:
   replicas: 1
-  serviceName: resourceful-set
+  serviceName: multitenancy
   selector:
     matchLabels:
-      name: resourceful-set
+      name: multitenancy
   template:
     metadata:
       labels:
-        name: resourceful-set
+        name: multitenancy
     spec:
-      serviceAccountName: resourceful-set
+      serviceAccountName: multitenancy
       containers:
-        - name: resourceful-set
-          image: configurator/resourceful-set:v0.0.5
+        - name: multitenancy
+          image: configurator/multitenancy:v0.0.5
           ports:
           - containerPort: 60000
             name: metrics
           command:
-          - resourceful-set
+          - multitenancy
           imagePullPolicy: Always
           readinessProbe:
             exec:
@@ -40,4 +40,4 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: OPERATOR_NAME
-              value: "resourceful-set"
+              value: "multitenancy"

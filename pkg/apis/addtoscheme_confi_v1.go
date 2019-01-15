@@ -1,7 +1,7 @@
 package apis
 
 import (
-	"github.com/configurator/resourceful-set/pkg/apis/confi/v1"
+	"github.com/configurator/multitenancy/pkg/apis/confi/v1"
 )
 
 func init() {

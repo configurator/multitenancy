@@ -4,4 +4,4 @@ RUN apk upgrade --update --no-cache
 
 USER nobody
 
-ADD build/_output/bin/resourceful-set /usr/local/bin/resourceful-set
+ADD build/_output/bin/multitenancy /usr/local/bin/multitenancy

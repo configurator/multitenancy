@@ -1,13 +1,13 @@
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: resourceful-set
+  name: multitenancy
 subjects:
 - kind: ServiceAccount
-  name: resourceful-set
+  name: multitenancy
   # Replace this with the namespace the operator is deployed in.
-  namespace: resourceful-set
+  namespace: multitenancy
 roleRef:
   kind: ClusterRole
-  name: resourceful-set
+  name: multitenancy
   apiGroup: rbac.authorization.k8s.io

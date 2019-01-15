@@ -1,5 +1,6 @@
-apiVersion: examples.confi.gurator.com/v1
-kind: Food
+apiVersion: confi.gurator.com/v1
+kind: Tenant
+tenancyKind: food
 metadata:
   name: apple
 data:
@@ -8,8 +9,9 @@ data:
 
 ---
 
-apiVersion: examples.confi.gurator.com/v1
-kind: Food
+apiVersion: confi.gurator.com/v1
+kind: Tenant
+tenancyKind: food
 metadata:
   name: cucumber
 data:
@@ -18,8 +20,9 @@ data:
 
 ---
 
-apiVersion: examples.confi.gurator.com/v1
-kind: Food
+apiVersion: confi.gurator.com/v1
+kind: Tenant
+tenancyKind: food
 metadata:
   name: tomato
 data:
