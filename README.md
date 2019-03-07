@@ -52,7 +52,7 @@ metadata:
   name: food-processor
 spec:
   # We want one instace for each Food in our system (required)
-  tenancyKind: Food
+  tenancyKind: food
   # Name the env variable for where to put the name of the food (optional)
   tenantNameVariable: FOOD_TYPE
   # Name the volume for where to put the food details (optional)
@@ -78,6 +78,6 @@ spec:
             mountPath: /etc/which-food
 ```
 
-The `MultiTenancy` operator will now create a Pod for each `Tenant` in the system with `tenancyKind: Food`, and mount a volume on each one at `/etc/which-food`. Inside that directory, we'll have two files, named `name` and `type`, containing the data from the `Food` definition, much like it would if we had a `ConfigMap`.
+The `MultiTenancy` operator will now create a Pod for each `Tenant` in the system with `tenancyKind: food`, and mount a volume on each one at `/etc/which-food`. Inside that directory, we'll have two files, named `name` and `type`, containing the data from the `Food` definition, much like it would if we had a `ConfigMap`.
 
 If a `Food` item is created or deleted, the pods are killed and started appropriately; for updates, the pod is first killed, then a new one is started.

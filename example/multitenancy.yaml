@@ -4,7 +4,7 @@ metadata:
   name: food-processor
 spec:
   # We want one instace for each Food in our system (required)
-  tenancyKind: Food
+  tenancyKind: food
   # Name the env variable for where to put the name of the food (optional)
   tenantNameVariable: FOOD_TYPE
   # Name the volume for where to put the food details (optional)
