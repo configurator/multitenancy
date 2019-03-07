@@ -146,17 +146,22 @@ func (r *ReconcileMultiTenancy) Reconcile(request reconcile.Request) (reconcile.
 func (r *ReconcileMultiTenancy) createItems(mts []confiv1.MultiTenancy, tenants []confiv1.Tenant) error {
 	for _, mt := range mts {
 		for _, tenant := range tenants {
-			if mt.Spec.TenancyKind == tenant.TenancyKind {
+			if mt.Namespace != tenant.Namespace {
+				log.Info("Skipping tenant due to namespace mismatch", "tenant", tenant.Name, "mt", mt.Name, "tenant.Namespace", tenant.Namespace, "mt.Spec.Namespace", mt.Namespace)
+				continue
+			}
+
+			if mt.Spec.TenancyKind != tenant.TenancyKind {
+				log.Info("Skipping tenant due to TenancyKind mismatch", "tenant", tenant.Name, "mt", mt.Name, "tenant.TenancyKind", tenant.TenancyKind, "mt.Spec.TenancyKind", mt.Spec.TenancyKind)
+				continue
+			}
 
 				err := r.createItemsForResource(&mt, &tenant)
 				if err != nil {
 					return err
 				}
-			} else {
-				log.Info("Skipping tenant due to TenancyKind mismatch", "tenant", tenant.Name, "mt", mt.Name, "tenant.TenancyKind", tenant.TenancyKind, "mt.Spec.TenancyKind", mt.Spec.TenancyKind)
 			}
 		}
-	}
 	return nil
 }
 
