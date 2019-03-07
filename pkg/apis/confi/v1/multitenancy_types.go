@@ -5,9 +5,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // MultiTenancySpec defines the desired state of MultiTenancy
 type MultiTenancySpec struct {
 	// Which resource type we're replicating over. For each item of this resource type, the multitenancy
@@ -69,9 +66,8 @@ type MultiTenancyStatus struct {
 	UnavailableReplicas int32 `json:"unavailableReplicas,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // MultiTenancy is the Schema for the multitenancys API
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:openapi-gen=true
 type MultiTenancy struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -81,15 +77,33 @@ type MultiTenancy struct {
 	Status MultiTenancyStatus `json:"status,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // MultiTenancyList contains a list of MultiTenancy
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type MultiTenancyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []MultiTenancy `json:"items"`
 }
 
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:openapi-gen=true
+type Tenant struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	TenancyKind string            `json:"tenancyKind"`
+	Data        map[string]string `json:"data,omitempty"`
+}
+
+// TenantList contains a list of Tenant
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type TenantList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []Tenant `json:"items"`
+}
+
 func init() {
 	SchemeBuilder.Register(&MultiTenancy{}, &MultiTenancyList{})
+	SchemeBuilder.Register(&Tenant{}, &TenantList{})
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	confiv1 "github.com/configurator/multitenancy/pkg/apis/confi/v1"
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -56,19 +55,29 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to secondary resource Pods and requeue the owner MultiTenancy
+	// Watch for changes to primary resource Tenant
+	err = c.Watch(&source.Kind{Type: &confiv1.Tenant{}}, &handler.EnqueueRequestForObject{})
+	if err != nil {
+		return err
+	}
+
+	// Watch for changes to secondary resource Pods and requeue the owner Tenant
 	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &confiv1.MultiTenancy{},
+		OwnerType:    &confiv1.Tenant{},
 	})
 	if err != nil {
 		return err
 	}
 
-	// err = c.Watch(&source.Kind{Type: }, &handler.EnqueueRequestForObject{})
-	// if err != nil {
-	// 	return err
-	// }
+	// Watch for changes to secondary resource ConfigMap and requeue the owner Tenant
+	err = c.Watch(&source.Kind{Type: &corev1.ConfigMap{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &confiv1.Tenant{},
+	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -83,23 +92,20 @@ type ReconcileMultiTenancy struct {
 	scheme *runtime.Scheme
 }
 
-func (r *ReconcileMultiTenancy) loadResources(resourceType string) ([]string, map[string]map[string]string) {
-	names := []string{
-		"item-one",
-		"item-two",
+func (r *ReconcileMultiTenancy) loadResources() ([]confiv1.MultiTenancy, []confiv1.Tenant, error) {
+	mts := &confiv1.MultiTenancyList{}
+	err := r.client.List(context.TODO(), &client.ListOptions{}, mts)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	data := map[string]map[string]string{
-		"item-one": map[string]string{
-			"hello": "world",
-			"some":  "thing",
-		},
-		"item-two": map[string]string{
-			"a-file": "contents",
-		},
+	tenants := &confiv1.TenantList{}
+	err = r.client.List(context.TODO(), &client.ListOptions{}, tenants)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return names, data
+	return mts.Items, tenants.Items, nil
 }
 
 // Reconcile reads that state of the cluster for a MultiTenancy object and makes changes based on the state read
@@ -110,35 +116,20 @@ func (r *ReconcileMultiTenancy) loadResources(resourceType string) ([]string, ma
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileMultiTenancy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling MultiTenancy")
+	log.Info("Reconcile request", "request", request)
 
-	// Fetch the MultiTenancy instance
-	instance := &confiv1.MultiTenancy{}
-	err := r.client.Get(context.TODO(), request.NamespacedName, instance)
+	mts, tenants, err := r.loadResources()
 	if err != nil {
-		if kerrors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
-			return reconcile.Result{}, nil
-		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
-
-	names, data := r.loadResources(instance.Spec.TenancyKind)
 
 	// Define what we'll be creating
-	items, err := r.createItems(reqLogger,
-		instance,
-		names,
-		data)
+	items, err := r.createItems(mts, tenants)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	err = r.deleteExtraItems(reqLogger, instance, items)
+	err = r.deleteExtraItems(mts, items)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -146,28 +137,34 @@ func (r *ReconcileMultiTenancy) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileMultiTenancy) createItems(logger logr.Logger, cr *confiv1.MultiTenancy, resourceNames []string, data map[string]map[string]string) ([]runtime.Object, error) {
+func (r *ReconcileMultiTenancy) createItems(mts []confiv1.MultiTenancy, tenants []confiv1.Tenant) ([]runtime.Object, error) {
 	result := []runtime.Object{}
-	for _, name := range resourceNames {
-		objects, err := r.createItemsForResource(logger, cr, name, data[name])
-		if err != nil {
-			return nil, err
+	for _, mt := range mts {
+		for _, tenant := range tenants {
+			if mt.Spec.TenancyKind == tenant.TenancyKind {
+				objects, err := r.createItemsForResource(&mt, &tenant)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, objects...)
+			}
 		}
-		result = append(result, objects...)
 	}
 	return result, nil
 }
 
 // createItems returns all the items we would create if this were a new deployment
 // these items should later be compared with the actual state to reconcile
-func (r *ReconcileMultiTenancy) createItemsForResource(log logr.Logger, cr *confiv1.MultiTenancy, resourceName string, data map[string]string) ([]runtime.Object, error) {
-	combinedName := cr.Name + "-" + resourceName
+func (r *ReconcileMultiTenancy) createItemsForResource(mt *confiv1.MultiTenancy, tenant *confiv1.Tenant) ([]runtime.Object, error) {
+	resourceName := tenant.Name
+	data := tenant.Data
+	combinedName := mt.Name + "-" + resourceName
 
 	// Create ConfigMap for the data volume
 
 	configMapMetadata := metav1.ObjectMeta{
 		Name:      combinedName,
-		Namespace: cr.Namespace,
+		Namespace: mt.Namespace,
 	}
 
 	configMap := &corev1.ConfigMap{
@@ -176,25 +173,28 @@ func (r *ReconcileMultiTenancy) createItemsForResource(log logr.Logger, cr *conf
 	}
 
 	addCreatedByLabel(&configMap.ObjectMeta, combinedName)
-	err := addCreationAnnotation(&configMap.ObjectMeta, configMap)
+	err := r.addOwnerReferences(&configMap.ObjectMeta, mt, tenant)
 	if err != nil {
 		return nil, err
 	}
-
-	recreatedConfig, err := r.reconcileConfigMap(log, cr, configMap)
+	err = addCreationAnnotation(&configMap.ObjectMeta, configMap)
+	if err != nil {
+		return nil, err
+	}
+	recreatedConfig, err := r.reconcileConfigMap(mt, configMap)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create a Pod for the workload
 
-	metadata := *cr.Spec.Template.ObjectMeta.DeepCopy()
-	metadata.Namespace = cr.Namespace
+	metadata := *mt.Spec.Template.ObjectMeta.DeepCopy()
+	metadata.Namespace = mt.Namespace
 	metadata.Name = combinedName
 
-	spec := cr.Spec.Template.Spec.DeepCopy()
+	spec := mt.Spec.Template.Spec.DeepCopy()
 
-	tenantResourceVolume := cr.Spec.TenantResourceVolume
+	tenantResourceVolume := mt.Spec.TenantResourceVolume
 	if tenantResourceVolume != "" {
 		// Add a volume mapping to a ConfigMap
 		spec.Volumes = append(spec.Volumes, corev1.Volume{
@@ -209,7 +209,7 @@ func (r *ReconcileMultiTenancy) createItemsForResource(log logr.Logger, cr *conf
 		})
 	}
 
-	tenantNameVariable := cr.Spec.TenantNameVariable
+	tenantNameVariable := mt.Spec.TenantNameVariable
 	if tenantNameVariable != "" {
 		// Add an environment variable mapping - to every container in the pod
 		for i := range spec.Containers {
@@ -225,13 +225,15 @@ func (r *ReconcileMultiTenancy) createItemsForResource(log logr.Logger, cr *conf
 		Spec:       *spec,
 	}
 	addCreatedByLabel(&pod.ObjectMeta, combinedName)
-	// we add the configmap version before we add the creation annotation, so that if it changes
-	// a recreation is forced
+	err = r.addOwnerReferences(&pod.ObjectMeta, mt, tenant)
+	if err != nil {
+		return nil, err
+	}
 	err = addCreationAnnotation(&pod.ObjectMeta, pod)
 	if err != nil {
 		return nil, err
 	}
-	err = r.reconcilePod(log, cr, pod, recreatedConfig)
+	err = r.reconcilePod(mt, pod, recreatedConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -239,13 +241,8 @@ func (r *ReconcileMultiTenancy) createItemsForResource(log logr.Logger, cr *conf
 	return nil, nil
 }
 
-func (r *ReconcileMultiTenancy) reconcileConfigMap(reqLogger logr.Logger, cr *confiv1.MultiTenancy, configMap *corev1.ConfigMap) (bool, error) {
-	reqLogger.Info(`Reconciling ConfigMap`, `ConfigMap`, configMap.ObjectMeta)
-
-	// Set MultiTenancy instance as the owner and controller
-	if err := controllerutil.SetControllerReference(cr, configMap, r.scheme); err != nil {
-		return false, err
-	}
+func (r *ReconcileMultiTenancy) reconcileConfigMap(mt *confiv1.MultiTenancy, configMap *corev1.ConfigMap) (bool, error) {
+	log.Info(`Reconciling ConfigMap`, `ConfigMap`, configMap.ObjectMeta)
 
 	// Check if this ConfigMap already exists
 	found := &corev1.ConfigMap{}
@@ -253,7 +250,7 @@ func (r *ReconcileMultiTenancy) reconcileConfigMap(reqLogger logr.Logger, cr *co
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			// ConfigMap doesn't exist - create it
-			reqLogger.Info("Creating a new ConfigMap", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
+			log.Info("Creating a new ConfigMap", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
 			err = r.client.Create(context.TODO(), configMap)
 			if err != nil {
 				return false, err
@@ -268,13 +265,13 @@ func (r *ReconcileMultiTenancy) reconcileConfigMap(reqLogger logr.Logger, cr *co
 	oldAnnotation := configMap.Annotations[creationSpecAnnotationKey]
 	newAnnotation := found.Annotations[creationSpecAnnotationKey]
 	if oldAnnotation == newAnnotation {
-		reqLogger.Info("Skip reconcile: ConfigMap already exists", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
+		log.Info("Skip reconcile: ConfigMap already exists", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
 		return false, nil
 	}
 
 	// ConfigMap spec is different - recreate it
 	// This will trigger recreation because we watch for pod deletions
-	reqLogger.Info("Reconciler found ConfigMap already exists - recreating ConfigMap", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
+	log.Info("Reconciler found ConfigMap already exists - recreating ConfigMap", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
 	err = r.client.Delete(context.TODO(), found)
 	if err != nil {
 		return false, err
@@ -283,13 +280,8 @@ func (r *ReconcileMultiTenancy) reconcileConfigMap(reqLogger logr.Logger, cr *co
 	return true, nil
 }
 
-func (r *ReconcileMultiTenancy) reconcilePod(reqLogger logr.Logger, cr *confiv1.MultiTenancy, pod *corev1.Pod, recreatedConfig bool) error {
-	reqLogger.Info(`Reconciling pod`, `Pod`, pod.ObjectMeta)
-
-	// Set MultiTenancy instance as the owner and controller
-	if err := controllerutil.SetControllerReference(cr, pod, r.scheme); err != nil {
-		return err
-	}
+func (r *ReconcileMultiTenancy) reconcilePod(mt *confiv1.MultiTenancy, pod *corev1.Pod, recreatedConfig bool) error {
+	log.Info(`Reconciling pod`, `Pod`, pod.ObjectMeta)
 
 	// Check if this Pod already exists
 	found := &corev1.Pod{}
@@ -297,7 +289,7 @@ func (r *ReconcileMultiTenancy) reconcilePod(reqLogger logr.Logger, cr *confiv1.
 	if err != nil {
 		if kerrors.IsNotFound(err) {
 			// Pod doesn't exist - create it
-			reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+			log.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
 			err = r.client.Create(context.TODO(), pod)
 			return err
 		}
@@ -308,29 +300,29 @@ func (r *ReconcileMultiTenancy) reconcilePod(reqLogger logr.Logger, cr *confiv1.
 	// Pod already exists - check if its spec is identical to what we would create
 	recreate := false
 
-	if recreatedConfig && cr.Spec.TenantResourceVolume != "" {
-		// The config was recreated, and tenantResourceVolume is specified
-		// we recreate the pod, so the mount is correct
-		reqLogger.Info("Pod needs to be recreated because the configMap has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-		recreate = true
-	}
+	// if recreatedConfig && mt.Spec.TenantResourceVolume != "" {
+	// 	// The config was recreated, and tenantResourceVolume is specified
+	// 	// we recreate the pod, so the mount is correct
+	// 	log.Info("Pod needs to be recreated because the configMap has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	// 	recreate = true
+	// }
 
 	// If we've recrated the config we can skip the annotation check because we're always going to recreate the pod
 	oldAnnotation := pod.Annotations[creationSpecAnnotationKey]
 	newAnnotation := found.Annotations[creationSpecAnnotationKey]
 	if oldAnnotation != newAnnotation {
-		reqLogger.Info("Pod needs to be recreated because its spec has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		log.Info("Pod needs to be recreated because its spec has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 		recreate = true
 	}
 
 	if !recreate {
-		reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		log.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 		return nil
 	}
 
 	// Pod spec is different - recreate it
 	// This will trigger recreation because we watch for pod deletions
-	reqLogger.Info("Reconciler found pod already exists - recreating pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
+	log.Info("Reconciler found pod already exists - recreating pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
 	err = r.client.Delete(context.TODO(), found)
 	if err != nil {
 		return err
@@ -362,12 +354,26 @@ func addCreatedByLabel(metadata *metav1.ObjectMeta, value string) {
 	metadata.Labels[createdByLabel] = value
 }
 
-func (r *ReconcileMultiTenancy) deleteExtraItems(logger logr.Logger, cr *confiv1.MultiTenancy, createdItems []runtime.Object) error {
+func (r *ReconcileMultiTenancy) addOwnerReferences(metadata *metav1.ObjectMeta, mt *confiv1.MultiTenancy, tenant *confiv1.Tenant) error {
+	// Set MultiTenancy instance as the owner and controller
+	if err := controllerutil.SetControllerReference(tenant, metadata, r.scheme); err != nil {
+		return err
+	}
+
+	// TODO: figure out a way to set multiple owner references. This may need support from the
+	// kubernetes team, as currently, if setting multiple, deletes are not cascaded corrently
+	// (we want the item to be deleted if _any_ owner is deleted; currently, the item would
+	// only be deleted if _all_ owners are deleted)
+
+	return nil
+}
+
+func (r *ReconcileMultiTenancy) deleteExtraItems(mts []confiv1.MultiTenancy, createdItems []runtime.Object) error {
 
 	// list := metav1.List{}
 	// err := r.client.List(context.TODO(),
 	// 	&client.ListOptions{
-	// 		Namespace:     cr.Namespace,
+	// 		Namespace:     mt.Namespace,
 	// 		LabelSelector: labels.Everything(),
 	// 	},
 	// 	&list,
