@@ -92,7 +92,7 @@ func (r *ReconcileMultiTenancy) loadResources(resourceType string) ([]string, ma
 	data := map[string]map[string]string{
 		"item-one": map[string]string{
 			"hello": "world",
-			"name":  "item-one",
+			"some":  "thing",
 		},
 		"item-two": map[string]string{
 			"a-file": "contents",
@@ -207,6 +207,17 @@ func (r *ReconcileMultiTenancy) createItemsForResource(log logr.Logger, cr *conf
 				},
 			},
 		})
+	}
+
+	tenantNameVariable := cr.Spec.TenantNameVariable
+	if tenantNameVariable != "" {
+		// Add an environment variable mapping - to every container in the pod
+		for i := range spec.Containers {
+			spec.Containers[i].Env = append(spec.Containers[i].Env, corev1.EnvVar{
+				Name:  tenantNameVariable,
+				Value: resourceName,
+			})
+		}
 	}
 
 	pod := &corev1.Pod{

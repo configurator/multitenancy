@@ -14,6 +14,10 @@ type MultiTenancySpec struct {
 	// will create a pod.
 	TenancyKind string `json:"tenancyKind"`
 
+	// An envrionment variable name to be used so the pod knows which resource instance it's replicated for.
+	// +optional
+	TenantNameVariable string `json:"tenantNameVariable,omitempty"`
+
 	// A volume name to be used so the pod knows which resource instance it's replicated for.
 	// +optional
 	TenantResourceVolume string `json:"tenantResourceVolume,omitempty"`

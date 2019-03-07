@@ -51,10 +51,14 @@ kind: MultiTenancy
 metadata:
   name: food-processor
 spec:
-  # We want one instace for each Food in our system
+  # We want one instace for each Food in our system (required)
   tenancyKind: Food
-  # Name the volume for where to put the food details
+  # Name the env variable for where to put the name of the food (optional)
+  tenantNameVariable: FOOD_TYPE
+  # Name the volume for where to put the food details (optional)
   tenantResourceVolume: which-food
+  # Note: if the tenantResourceVolume is specified, the pod will be restarted for any change in the tenant's data.
+  # However, if only tenantNameVariable is specified, the pod will not respond to changes in tenant data
 
   # Standard selector and template definition, much like for Deployments or StatefulSets:
   selector:
