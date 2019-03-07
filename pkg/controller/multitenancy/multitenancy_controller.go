@@ -20,8 +20,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const creationSpecAnnotationKey = "confi.gurator.com/multitenancy-creation-spec"
-const createdByLabel = "confi.gurator.com/multitenancy-creation-spec"
+const creationSpecAnnotationKey = "confi.gurator.com/creation-spec"
+const tenantLabel = "confi.gurator.com/tenant"
+const multitenancyLabel = "confi.gurator.com/multitenancy"
+const managedByLabel = "confi.gurator.com/manged-by"
+const managedByLabelValue = "multitenancy_controller"
+const managedByLabelSelector = managedByLabel + "=" + managedByLabelValue
 
 var log = logf.Log.WithName("controller_multitenancy")
 
@@ -123,13 +127,15 @@ func (r *ReconcileMultiTenancy) Reconcile(request reconcile.Request) (reconcile.
 		return reconcile.Result{}, err
 	}
 
+	log.Info("Loaded resources", "multitenancy count", len(mts), "tenant count", len(tenants))
+
 	// Define what we'll be creating
-	items, err := r.createItems(mts, tenants)
+	err = r.createItems(mts, tenants)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
 
-	err = r.deleteExtraItems(mts, items)
+	err = r.deleteExtraItems(mts, tenants)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -137,25 +143,26 @@ func (r *ReconcileMultiTenancy) Reconcile(request reconcile.Request) (reconcile.
 	return reconcile.Result{}, nil
 }
 
-func (r *ReconcileMultiTenancy) createItems(mts []confiv1.MultiTenancy, tenants []confiv1.Tenant) ([]runtime.Object, error) {
-	result := []runtime.Object{}
+func (r *ReconcileMultiTenancy) createItems(mts []confiv1.MultiTenancy, tenants []confiv1.Tenant) error {
 	for _, mt := range mts {
 		for _, tenant := range tenants {
 			if mt.Spec.TenancyKind == tenant.TenancyKind {
-				objects, err := r.createItemsForResource(&mt, &tenant)
+
+				err := r.createItemsForResource(&mt, &tenant)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				result = append(result, objects...)
+			} else {
+				log.Info("Skipping tenant due to TenancyKind mismatch", "tenant", tenant.Name, "mt", mt.Name, "tenant.TenancyKind", tenant.TenancyKind, "mt.Spec.TenancyKind", mt.Spec.TenancyKind)
 			}
 		}
 	}
-	return result, nil
+	return nil
 }
 
 // createItems returns all the items we would create if this were a new deployment
 // these items should later be compared with the actual state to reconcile
-func (r *ReconcileMultiTenancy) createItemsForResource(mt *confiv1.MultiTenancy, tenant *confiv1.Tenant) ([]runtime.Object, error) {
+func (r *ReconcileMultiTenancy) createItemsForResource(mt *confiv1.MultiTenancy, tenant *confiv1.Tenant) error {
 	resourceName := tenant.Name
 	data := tenant.Data
 	combinedName := mt.Name + "-" + resourceName
@@ -172,18 +179,18 @@ func (r *ReconcileMultiTenancy) createItemsForResource(mt *confiv1.MultiTenancy,
 		Data:       data,
 	}
 
-	addCreatedByLabel(&configMap.ObjectMeta, combinedName)
+	addLabels(&configMap.ObjectMeta, mt, tenant)
 	err := r.addOwnerReferences(&configMap.ObjectMeta, mt, tenant)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	err = addCreationAnnotation(&configMap.ObjectMeta, configMap)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	recreatedConfig, err := r.reconcileConfigMap(mt, configMap)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Create a Pod for the workload
@@ -224,26 +231,24 @@ func (r *ReconcileMultiTenancy) createItemsForResource(mt *confiv1.MultiTenancy,
 		ObjectMeta: metadata,
 		Spec:       *spec,
 	}
-	addCreatedByLabel(&pod.ObjectMeta, combinedName)
+	addLabels(&pod.ObjectMeta, mt, tenant)
 	err = r.addOwnerReferences(&pod.ObjectMeta, mt, tenant)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	err = addCreationAnnotation(&pod.ObjectMeta, pod)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	err = r.reconcilePod(mt, pod, recreatedConfig)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return nil, nil
+	return nil
 }
 
 func (r *ReconcileMultiTenancy) reconcileConfigMap(mt *confiv1.MultiTenancy, configMap *corev1.ConfigMap) (bool, error) {
-	log.Info(`Reconciling ConfigMap`, `ConfigMap`, configMap.ObjectMeta)
-
 	// Check if this ConfigMap already exists
 	found := &corev1.ConfigMap{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: configMap.Name, Namespace: configMap.Namespace}, found)
@@ -265,7 +270,7 @@ func (r *ReconcileMultiTenancy) reconcileConfigMap(mt *confiv1.MultiTenancy, con
 	oldAnnotation := configMap.Annotations[creationSpecAnnotationKey]
 	newAnnotation := found.Annotations[creationSpecAnnotationKey]
 	if oldAnnotation == newAnnotation {
-		log.Info("Skip reconcile: ConfigMap already exists", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
+		// log.Info("Skip reconcile: ConfigMap already exists", "ConfigMap.Namespace", found.Namespace, "ConfigMap.Name", found.Name)
 		return false, nil
 	}
 
@@ -281,8 +286,6 @@ func (r *ReconcileMultiTenancy) reconcileConfigMap(mt *confiv1.MultiTenancy, con
 }
 
 func (r *ReconcileMultiTenancy) reconcilePod(mt *confiv1.MultiTenancy, pod *corev1.Pod, recreatedConfig bool) error {
-	log.Info(`Reconciling pod`, `Pod`, pod.ObjectMeta)
-
 	// Check if this Pod already exists
 	found := &corev1.Pod{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
@@ -300,12 +303,12 @@ func (r *ReconcileMultiTenancy) reconcilePod(mt *confiv1.MultiTenancy, pod *core
 	// Pod already exists - check if its spec is identical to what we would create
 	recreate := false
 
-	// if recreatedConfig && mt.Spec.TenantResourceVolume != "" {
-	// 	// The config was recreated, and tenantResourceVolume is specified
-	// 	// we recreate the pod, so the mount is correct
-	// 	log.Info("Pod needs to be recreated because the configMap has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-	// 	recreate = true
-	// }
+	if recreatedConfig && mt.Spec.TenantResourceVolume != "" {
+		// The config was recreated, and tenantResourceVolume is specified
+		// we recreate the pod, so the mount is correct
+		log.Info("Pod needs to be recreated because the configMap has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		recreate = true
+	}
 
 	// If we've recrated the config we can skip the annotation check because we're always going to recreate the pod
 	oldAnnotation := pod.Annotations[creationSpecAnnotationKey]
@@ -316,7 +319,7 @@ func (r *ReconcileMultiTenancy) reconcilePod(mt *confiv1.MultiTenancy, pod *core
 	}
 
 	if !recreate {
-		log.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		// log.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
 		return nil
 	}
 
@@ -347,11 +350,13 @@ func addCreationAnnotation(metadata *metav1.ObjectMeta, item runtime.Object) err
 	return nil
 }
 
-func addCreatedByLabel(metadata *metav1.ObjectMeta, value string) {
+func addLabels(metadata *metav1.ObjectMeta, mt *confiv1.MultiTenancy, tenant *confiv1.Tenant) {
 	if metadata.Labels == nil {
 		metadata.Labels = make(map[string]string)
 	}
-	metadata.Labels[createdByLabel] = value
+	metadata.Labels[multitenancyLabel] = mt.Name
+	metadata.Labels[tenantLabel] = tenant.Name
+	metadata.Labels[managedByLabel] = managedByLabelValue
 }
 
 func (r *ReconcileMultiTenancy) addOwnerReferences(metadata *metav1.ObjectMeta, mt *confiv1.MultiTenancy, tenant *confiv1.Tenant) error {
@@ -368,31 +373,97 @@ func (r *ReconcileMultiTenancy) addOwnerReferences(metadata *metav1.ObjectMeta, 
 	return nil
 }
 
-func (r *ReconcileMultiTenancy) deleteExtraItems(mts []confiv1.MultiTenancy, createdItems []runtime.Object) error {
+func (r *ReconcileMultiTenancy) deleteExtraItems(mts []confiv1.MultiTenancy, tenants []confiv1.Tenant) error {
+	mtsNames := make(map[string]bool)
+	for _, mt := range mts {
+		mtsNames[mt.Name] = true
+	}
 
-	// list := metav1.List{}
-	// err := r.client.List(context.TODO(),
-	// 	&client.ListOptions{
-	// 		Namespace:     mt.Namespace,
-	// 		LabelSelector: labels.Everything(),
-	// 	},
-	// 	&list,
-	// )
-	// if err != nil {
-	// 	return err
-	// }
+	tenantNames := make(map[string]bool)
+	for _, tenant := range tenants {
+		tenantNames[tenant.Name] = true
+	}
 
-	// for _, item := range list.Items {
-	// 	o, ok := item.Object.(metav1.Object)
-	// 	if !ok {
-	// 		return fmt.Errorf("Found kubernetes item is not a metav1.Object: %T", item)
-	// 	}
+	opts := &client.ListOptions{}
+	opts.SetLabelSelector(managedByLabelSelector)
 
-	// 	// owners := o.GetOwnerReferences()
-	// 	// for _, owner := range owners {
-	// 	// 	// owner.
-	// 	// }
-	// }
+	pods := &corev1.PodList{}
+	err := r.client.List(context.TODO(), opts, pods)
+	if err != nil {
+		return err
+	}
+	for _, pod := range pods.Items {
+		shouldDelete := false
+
+		mt, mtLabelFound := (pod.Labels[multitenancyLabel])
+		if !mtLabelFound {
+			log.Info("Deleting pod as it is missing a multitenancy label", "pod.Name", pod.Name)
+			shouldDelete = true
+		} else {
+			_, mtFound := mtsNames[mt]
+			if !mtFound {
+				log.Info("Deleting pod the multitenancy no longer exists", "pod.Name", pod.Name, "mt", mt)
+				shouldDelete = true
+			}
+		}
+		tenant, tenantLabelFound := (pod.Labels[tenantLabel])
+		if !tenantLabelFound {
+			log.Info("Deleting pod as it is missing a tenant label", "pod.Name", pod.Name)
+			shouldDelete = true
+		} else {
+			_, tenantFound := tenantNames[tenant]
+			if !tenantFound {
+				log.Info("Deleting pod as the tenant no longer exists", "pod.Name", pod.Name, "tenant", tenant)
+				shouldDelete = true
+			}
+		}
+
+		if shouldDelete {
+			err = r.client.Delete(context.TODO(), &pod)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	configmaps := &corev1.ConfigMapList{}
+	err = r.client.List(context.TODO(), opts, configmaps)
+	if err != nil {
+		return err
+	}
+	for _, cm := range configmaps.Items {
+		shouldDelete := false
+
+		mt, mtLabelFound := (cm.Labels[multitenancyLabel])
+		if !mtLabelFound {
+			log.Info("Deleting configmap as it is missing a multitenancy label", "cm.Name", cm.Name)
+			shouldDelete = true
+		} else {
+			_, mtFound := mtsNames[mt]
+			if !mtFound {
+				log.Info("Deleting configmap the multitenancy no longer exists", "cm.Name", cm.Name, "mt", mt)
+				shouldDelete = true
+			}
+		}
+		tenant, tenantLabelFound := (cm.Labels[tenantLabel])
+		if !tenantLabelFound {
+			log.Info("Deleting configmap as it is missing a tenant label", "cm.Name", cm.Name)
+			shouldDelete = true
+		} else {
+			_, tenantFound := tenantNames[tenant]
+			if !tenantFound {
+				log.Info("Deleting configmap as the tenant no longer exists", "cm.Name", cm.Name, "tenant", tenant)
+				shouldDelete = true
+			}
+		}
+
+		if shouldDelete {
+			err = r.client.Delete(context.TODO(), &cm)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
