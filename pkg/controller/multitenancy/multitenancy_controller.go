@@ -306,14 +306,26 @@ func (r *ReconcileMultiTenancy) reconcilePod(reqLogger logr.Logger, cr *confiv1.
 	}
 
 	// Pod already exists - check if its spec is identical to what we would create
-	if !recreatedConfig {
-		// If we've recrated the config we can skip the annotation check because we're always going to recreate the pod
-		oldAnnotation := pod.Annotations[creationSpecAnnotationKey]
-		newAnnotation := found.Annotations[creationSpecAnnotationKey]
-		if oldAnnotation == newAnnotation {
-			reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
-			return nil
-		}
+	recreate := false
+
+	if recreatedConfig && cr.Spec.TenantResourceVolume != "" {
+		// The config was recreated, and tenantResourceVolume is specified
+		// we recreate the pod, so the mount is correct
+		reqLogger.Info("Pod needs to be recreated because the configMap has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		recreate = true
+	}
+
+	// If we've recrated the config we can skip the annotation check because we're always going to recreate the pod
+	oldAnnotation := pod.Annotations[creationSpecAnnotationKey]
+	newAnnotation := found.Annotations[creationSpecAnnotationKey]
+	if oldAnnotation != newAnnotation {
+		reqLogger.Info("Pod needs to be recreated because its spec has changed", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		recreate = true
+	}
+
+	if !recreate {
+		reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+		return nil
 	}
 
 	// Pod spec is different - recreate it
