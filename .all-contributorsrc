@@ -1,0 +1,24 @@
+{
+  "projectName": "multitenancy",
+  "projectOwner": "configurator",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": false,
+  "contributors": [
+    {
+      "login": "configurator",
+      "name": "Dor Kleiman",
+      "avatar_url": "https://avatars3.githubusercontent.com/u/671365?v=4",
+      "profile": "http://confi.gurator.com",
+      "contributions": [
+        "ideas",
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7
+}
