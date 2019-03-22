@@ -1,5 +1,6 @@
 # MultiTenancies
 [![All Contributors](https://img.shields.io/badge/all_contributors-2-orange.svg?style=flat-square)](#contributors)
+
 `MultiTenancy` is a kubernetes workload type like `StatefulSet`, except dependant on defined tenants instead of on a replica count.
 
 ## Installation
