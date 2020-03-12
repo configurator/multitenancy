@@ -27,7 +27,7 @@ IMAGE_TAG ?= configurator/multitenancy-controller
 .PHONY: build
 LD_FLAGS ?= -ldflags -X=github.com/configurator/multitenancy/version.CommitSHA=`git rev-parse HEAD`
 build: ${OPERATOR_SDK}
-	${OPERATOR_SDK} build ${IMAGE_TAG} --go-build-args "${LD_FLAGS}"
+	CGO_ENABLED=${CGO_ENABLED} GOOS=linux ${OPERATOR_SDK} build ${IMAGE_TAG} --go-build-args "${LD_FLAGS}"
 
 # Pushes the docker image to a registry
 push: build
@@ -62,7 +62,7 @@ ${KIND}:
 	chmod +x ${KIND}
 
 # This workflow could be adapted for testing in pipelines
-acctest: ${KIND} cluster load deploy 
+acctest: ${KIND} cluster load deploy
 	                                   # an acceptance test against the local cluster
 																		 # could go here
 
