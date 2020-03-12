@@ -13,7 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -106,10 +105,7 @@ func getDependentTenants(c client.Client, mt *confiv1.MultiTenancy) ([]reconcile
 	reqs := make([]reconcile.Request, 0)
 	for _, tenant := range tenants.Items {
 		reqs = append(reqs, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Name:      tenant.GetName(),
-				Namespace: tenant.GetNamespace(),
-			},
+			NamespacedName: tenant.NamespacedName(),
 		})
 	}
 	return reqs, nil
@@ -167,10 +163,12 @@ func (r *ReconcileTenant) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, nil
 	}
 
+	// reconcile pod and configmap for tenant
 	if err := r.reconcileItemsForResource(reqLogger, mt, instance); err != nil {
 		return reconcile.Result{}, err
 	}
 
+	// ensure a tenace label on the tenant object for lookup purposes
 	if err := r.ensureTenantLabels(reqLogger, mt, instance); err != nil {
 		return reconcile.Result{}, err
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -152,10 +151,6 @@ func main() {
 // the Prometheus operator
 func addMetrics(ctx context.Context, cfg *rest.Config, namespace string) {
 	if err := serveCRMetrics(cfg); err != nil {
-		if errors.Is(err, k8sutil.ErrRunLocal) {
-			log.Info("Skipping CR metrics server creation; not running in a cluster.")
-			return
-		}
 		log.Info("Could not generate and serve custom resource metrics", "error", err.Error())
 	}
 
