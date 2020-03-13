@@ -1,6 +1,9 @@
 # Go options
 GO111MODULE ?= auto
 CGO_ENABLED ?= 0
+GOLANGCI_VERSION ?= 1.23.8
+GOLANGCI_LINT ?= _bin/golangci-lint
+GOLANGCI_DOWNLOAD_URL ?= https://github.com/golangci/golangci-lint/releases/download/v${GOLANGCI_VERSION}/golangci-lint-${GOLANGCI_VERSION}-$(shell uname | tr A-Z a-z)-amd64.tar.gz
 
 # Operator SDK options
 SDK_VERSION ?= v0.15.2
@@ -46,6 +49,16 @@ generate: ${OPERATOR_SDK}
 # Generates CRD manifest
 manifests: ${OPERATOR_SDK}
 	${OPERATOR_SDK} generate crds
+
+# Ensures a local copy of golangci lint
+${GOLANGCI_LINT}:
+	mkdir -p $(dir ${GOLANGCI_LINT})
+	cd $(dir ${GOLANGCI_LINT}) && curl -JL ${GOLANGCI_DOWNLOAD_URL} | tar xzf -
+	chmod +x $(dir ${GOLANGCI_LINT})golangci-lint-${GOLANGCI_VERSION}-$(shell uname | tr A-Z a-z)-amd64/golangci-lint
+	ln -s golangci-lint-${GOLANGCI_VERSION}-$(shell uname | tr A-Z a-z)-amd64/golangci-lint ${GOLANGCI_LINT}
+
+lint: ${GOLANGCI_LINT}
+	${GOLANGCI_LINT} run -v
 
 ##
 # Kind helpers for local testing

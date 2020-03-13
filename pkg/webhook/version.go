@@ -22,8 +22,12 @@ func (s *webhookServer) version(w http.ResponseWriter, r *http.Request) {
 		GitCommit: version.CommitSHA,
 	}, "", "  ")
 	if err != nil {
-		w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+		if _, err := w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error()))); err != nil {
+			webhooklog.Error(err, "Failed to write response")
+		}
 		return
 	}
-	w.Write(append(res, []byte("\n")...))
+	if _, err := w.Write(append(res, []byte("\n")...)); err != nil {
+		webhooklog.Error(err, "Failed to write response")
+	}
 }
