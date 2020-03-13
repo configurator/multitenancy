@@ -1,0 +1,42 @@
+{{- if .Values.webhook.enabled -}}
+{{- $commonName := printf "%s.%s.svc" (include "multitenancy.fullname" .) .Release.Namespace -}}
+{{- $altNames := list ( $commonName ) ( printf "%s.%s" $commonName .Values.clusterDomainSuffix) -}}
+{{- $ca := genCA "multitenancy-ca" 365 -}}
+{{- $cert := genSignedCert $commonName nil $altNames 365 $ca -}}
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "multitenancy.fullname" . }}-webhook
+  labels:
+    {{- include "multitenancy.labels" . | nindent 4 }}
+webhooks:
+- clientConfig:
+    caBundle: {{ $ca.Cert | b64enc }}
+    service:
+      name: {{ include "multitenancy.fullname" . }}
+      namespace: {{ .Release.Namespace }}
+      path: /validate
+  failurePolicy: Fail
+  name: tenants.confi.gurator.com
+  rules:
+  - apiGroups:
+    - confi.gurator.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - tenants
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    {{- include "multitenancy.labels" . | nindent 4 }}
+  name: {{ include "multitenancy.fullname" . }}-webhook-cert
+data:
+  tls.crt: {{ $cert.Cert | b64enc }}
+  tls.key: {{ $cert.Key | b64enc }}
+{{- end -}}
