@@ -1,0 +1,17 @@
+{{- if .Values.webhook.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "multitenancy.fullname" . }}
+  labels:
+    {{- include "multitenancy.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.webhook.service.type }}
+  ports:
+    - port: 443
+      targetPort: https
+      protocol: TCP
+      name: https
+  selector:
+    {{- include "multitenancy.selectorLabels" . | nindent 4 }}
+{{- end -}}

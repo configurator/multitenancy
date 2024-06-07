@@ -1,7 +1,15 @@
-FROM alpine:3.8
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
 
-RUN apk upgrade --update --no-cache
+ENV OPERATOR=/usr/local/bin/multitenancy \
+    USER_UID=1001 \
+    USER_NAME=multitenancy
 
-USER nobody
+# install operator binary
+COPY build/_output/bin/multitenancy ${OPERATOR}
 
-ADD build/_output/bin/multitenancy /usr/local/bin/multitenancy
+COPY build/bin /usr/local/bin
+RUN  /usr/local/bin/user_setup
+
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
+
+USER ${USER_UID}
